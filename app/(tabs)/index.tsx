@@ -75,7 +75,6 @@ export default function Index() {
   
     return (
         <GestureHandlerRootView style={styles.container}>
-
             <View
                 style={styles.container}
             >
@@ -111,6 +110,8 @@ export default function Index() {
 
 const styles = StyleSheet.create({
     container: {
+        paddingTop: 40,
+        paddingBottom: 40,
         flex: 1,
         backgroundColor: '#25292e',
         alignItems: 'center',
@@ -143,7 +144,7 @@ const styles = StyleSheet.create({
 
     optionsContainer: {
         position: 'absolute',
-        bottom: 80,
+        bottom: 100,
     },
     optionsRow: {
         alignItems: 'center',
