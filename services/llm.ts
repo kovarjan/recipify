@@ -15,13 +15,12 @@ function unicodeToDecimal(str: string): string {
     return str.replace(/[¼½¾⅐⅑⅒⅓⅔⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞]/g, ch => String(UNICODE_FRACTIONS[ch]));
 }
 
-/** Parses "1 3/4", "3/4", "⅛", "1.5" -> number; returns NaN if not a number. */
+// Parses number - or returns NaN
 function parseQty(input: unknown): number | undefined {
     if (typeof input === "number") return input;
     if (typeof input !== "string") return undefined;
     const s = unicodeToDecimal(input).trim();
 
-    // Mixed number "1 3/4"
     const mixed = s.match(/^(\d+)\s+(\d+)\/(\d+)$/);
     if (mixed) {
         const whole = parseFloat(mixed[1]);
@@ -29,19 +28,18 @@ function parseQty(input: unknown): number | undefined {
         const den = parseFloat(mixed[3]);
         return whole + (den ? num / den : 0);
     }
-    // Simple fraction "3/4"
+
     const frac = s.match(/^(\d+)\/(\d+)$/);
     if (frac) {
         const num = parseFloat(frac[1]);
         const den = parseFloat(frac[2]);
         return den ? num / den : undefined;
     }
-    // Decimal or integer
+
     const n = Number(s);
     return Number.isFinite(n) ? n : undefined;
 }
 
-/** Deeply removes keys with null values and trims empty strings; converts qty strings to numbers. */
 function sanitizeRecipeJSON(draft: any) {
     const deep = (val: any): any => {
         if (Array.isArray(val)) return val.map(deep).filter(v => v !== undefined);
@@ -57,7 +55,7 @@ function sanitizeRecipeJSON(draft: any) {
         }
         if (typeof val === "string") {
             const t = val.trim();
-            // normalize typos like "sól" -> leave as-is (you can add a fixer here if you want)
+
             return t.length ? t : undefined; // drop empty strings
         }
         return val;
@@ -71,22 +69,20 @@ function sanitizeRecipeJSON(draft: any) {
             if (!ing || typeof ing !== "object") return ing;
             const normalized: any = { ...ing };
 
-            // qty: convert strings/fractions -> number; if fails, omit
+            // qty: convert strings/fractions -> number - remove if invalid
             if (normalized.qty !== undefined) {
                 const q = parseQty(normalized.qty);
                 if (q === undefined || Number.isNaN(q)) delete normalized.qty;
                 else normalized.qty = q;
             }
 
-            // unit: if empty after trim it was removed; okay
-            // item: ensure present
             if (!normalized.item) return undefined;
 
             return normalized;
         }).filter(Boolean);
     }
 
-    // Steps: ensure order is number
+    // Steps ordered
     if (out?.steps && Array.isArray(out.steps)) {
         out.steps = out.steps.map((s: any, i: number) => {
             if (!s || typeof s !== "object") return undefined;
@@ -99,9 +95,8 @@ function sanitizeRecipeJSON(draft: any) {
     return out;
 }
 
-
+// ---- main function ----
 export async function parseRecipe(ocrText: string) {
-    // Build your prompt (system rules + OCR text)
     const systemRules = `
 You extract structured recipe data as JSON ONLY (no prose).
 Return an object matching this shape (omit fields if unknown):
@@ -118,25 +113,25 @@ Return an object matching this shape (omit fields if unknown):
 Rules:
 - Output valid JSON with double quotes, no comments, no markdown fences.
 - Convert unicode fractions (½, ¼) to decimals.
-- Prefer SI units (g, ml) or common cooking units (tsp, tbsp, cup).
+- Prefer SI units (g, ml) or common cooking units (tsp, tbsp, cup) (PL = tbsp).
 - Keep section context in 'notes' (e.g., "for the sauce").
 - Tags should be single words, lowercase based on recipe content.
+- First tag is the main category of the recipe. (one of: breakfast, lunch, dinner, dessert, snack, beverage, salad, soup, baking)
+- Fix grammar/typos in recipe text.
 - Never invent data: if unknown, omit the key.
 `.trim();
 
     const prompt = `${systemRules}\n\nOCR_TEXT:\n${ocrText}\n\nRespond with JSON only.`;
 
     let content;
-    // 1) Call OpenRouter and get the assistant message content (string)
     try {
         content = await openRouterChat(prompt);
     } catch (e) {
         console.error("Error calling OpenRouter:", e);
-        Alert.alert("Error", "Failed to process recipe. Please try again.");
+        Alert.alert("Error", "Failed to process recipe. Please try again. " + String(e));
         return null;
     }
 
-    // 2) Clean any accidental code fences and extract the first JSON object
     const cleaned1 = content
         .trim()
         .replace(/^```json\s*/i, "")
@@ -149,7 +144,6 @@ Rules:
         throw new Error(`Model did not return JSON. Got: ${cleaned1.slice(0, 200)}…`);
     }
 
-    // 3) Parse JSON -> object
     let draft: unknown;
     try {
         draft = JSON.parse(match[0]);
@@ -157,19 +151,15 @@ Rules:
         throw new Error(`Failed to parse JSON from model: ${String(e)}`);
     }
 
-    // // 4) Validate leniently with Zod (you add id/timestamps later)
-    // const validated = Recipe.partial().parse(draft);
-    // if (!validated.ingredients) validated.ingredients = [];
-    // if (!validated.steps) validated.steps = [];
-
-
-    // 3) Parse JSON -> object (you already have `draft`)
     const cleaned = sanitizeRecipeJSON(draft);
 
-    // 4) Validate leniently with Zod
     const validated = Recipe.partial().parse(cleaned);
     if (!validated.ingredients) validated.ingredients = [];
     if (!validated.steps) validated.steps = [];
-    return validated;
 
+    // Wait 5 seconds before returning (simulate async processing)
+    // const validated = {"ingredients": [{"item": "malted milk", "qty": 200, "unit": "g"}, {"item": "biscuits", "qty": 100, "unit": "g"}, {"item": "butter", "qty": 100, "unit": "g"}, {"item": "caster sugar", "qty": 5, "unit": "tbsp"}, {"item": "cream cheese", "qty": 600, "unit": "g"}, {"item": "heavy cream", "qty": 300, "unit": "ml"}, {"item": "white chocolate", "qty": 300, "unit": "g"}, {"item": "milk chocolate", "qty": 200, "unit": "g"}, {"item": "malt powder", "qty": 2, "unit": "tbsp"}, {"item": "white Maltesers", "qty": 55, "unit": "g"}], "servings": 10, "steps": [{"order": 1, "text": "Combine biscuits, melted butter, 2 tablespoons sugar. Press to the bottom of a lightly greased 9 inch pan and chill."}, {"order": 2, "text": "Divide cream cheese and cream between two bowls, evenly. Add white chocolate to one and milk chocolate, malt and remaining 3 tablespoons sugar to another. Mix well until smooth."}, {"order": 4, "text": "Scoop the milk chocolate mixture evenly into the pan. Pour the white chocolate mixture over the surface."}, {"order": 5, "text": "Garnish with Maltesers and chill overnight."}], "tags": ["dessert"], "title": "Double-Chocomalt Cheesecake"};
+    // await new Promise(resolve => setTimeout(resolve, 5000));
+    
+    return validated;
 }

@@ -1,24 +1,70 @@
 import Button from "@/components/Button";
 import { insertRecipe } from "@/lib/db";
+import type { RecipeT } from "@/lib/schema";
+import { saveRecipeImageFromUri, setDefaultRecipeImage } from "@/services/images";
 import { parseRecipe } from "@/services/llm";
+import * as Crypto from 'expo-crypto';
 import * as ImagePicker from "expo-image-picker";
 import React, { useState } from "react";
 import { Alert, Image, StyleSheet, Text, View } from "react-native";
 import { GestureHandlerRootView, ScrollView } from "react-native-gesture-handler";
 import TextRecognition from 'react-native-text-recognition';
 
-
 export default function CaptureScreen() {
     const [uri, setUri] = useState<string | null>(null);
     const [lines, setLines] = useState<string[] | null>(null);
-    const [recipe, setRecipe] = useState<any | null>(null);
+    const [recipe, setRecipe] = useState<RecipeT | null>(null);
 
     const pickAndOcr = async () => {
-        const res = await ImagePicker.launchImageLibraryAsync({ quality: 1 });
-        if (res.canceled) return;
-        const u = res.assets[0].uri;
+        // Ask user to choose between camera or gallery
+        Alert.alert(
+            "Select Image Source",
+            "Choose an image from gallery or take a new photo.",
+            [
+                {
+                    text: "Camera",
+                    onPress: async () => {
+                        const cameraPerm = await ImagePicker.requestCameraPermissionsAsync();
+                        if (!cameraPerm.granted) {
+                            Alert.alert("Permission required", "Camera permission is required.");
+                            return;
+                        }
+                        const res = await ImagePicker.launchCameraAsync({ quality: 1 });
+                        if (res.canceled) return;
+                        const u = res.assets[0].uri;
+
+                        processImage(u);
+                    }
+                },
+                {
+                    text: "Gallery",
+                    onPress: async () => {
+                        const mediaPerm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+                        if (!mediaPerm.granted) {
+                            Alert.alert("Permission required", "Media library permission is required.");
+                            return;
+                        }
+                        const res = await ImagePicker.launchImageLibraryAsync({ quality: 1 });
+                        if (res.canceled) return;
+                        const u = res.assets[0].uri;
+
+                        processImage(u);
+                    }
+                },
+                { text: "Cancel", style: "cancel" }
+            ]
+        );
+        return;
+    };
+
+    const processImage = async (u: string) => {
+        setUri(null);
+        setLines(null);
+        setRecipe(null);
+
         setUri(u);
 
+        // Continue with OCR
         console.log("Running OCR...", u);
 
         const out = await TextRecognition.recognize(u); // on-device OCR
@@ -30,31 +76,43 @@ export default function CaptureScreen() {
         console.log("Parsing recipe...");
 
         try {
-
-            const recipe = await parseRecipe(text);
-            
+            const recipe: RecipeT | null = await parseRecipe(text);
             console.log("Parsed recipe:", recipe);
-            console.log(recipe.title, recipe.ingredients.length);
-
             setRecipe(recipe);
-
         } catch (e) {
             console.error("Error parsing recipe:", e);
-
             Alert.alert("Error", "Failed to parse recipe. Please try again.");
         }
-    };
+    }
 
-    const handleImportRecipe = () => {
+    const handleImportRecipe = async() => {
         const now = Date.now();
 
         if (recipe) {
+            const recipeId = Crypto.randomUUID();
             insertRecipe({
-                ...recipe, id: `${now}-${Math.floor(Math.random() * 10000)}`,
+                ...recipe,
+                id: recipeId,
                 createdAt: now,
                 updatedAt: now,
                 schemaVersion: 1
             });
+
+            console.log("Inserted recipe into DB:", recipe, uri);
+
+            // Save image associated with recipe
+            if (uri) {
+                const ret = await saveRecipeImageFromUri(recipeId, uri).catch(err => {
+                    console.error("Error saving recipe image:", err);
+                });
+
+                console.log("Saving recipe image, promise:", ret);
+            } else {
+                console.warn("No image URI to save for recipe.");
+                await setDefaultRecipeImage(recipeId).catch(err => {
+                    console.error("Error setting default recipe image:", err);
+                });
+            }
             Alert.alert("Import Recipe", `Recipe "${recipe.title}" imported successfully!`);
         } else {
             Alert.alert("No Recipe", "No recipe to import. Please capture an image first.");

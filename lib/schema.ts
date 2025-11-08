@@ -19,7 +19,7 @@ export const Recipe = z.object({
     description: z.string().optional(),
     servings: z.number().optional(),
     totalTimeMinutes: z.number().optional(),
-    categories: z.array(z.string()).optional(),
+    category: z.string().optional(),
     tags: z.array(z.string()).optional(),
     ingredients: z.array(Ingredient),
     steps: z.array(Step),
@@ -27,15 +27,17 @@ export const Recipe = z.object({
         kind: z.enum(["photo", "import", "manual"]),
         uri: z.string().optional(),
     }).optional(),
-    nutrition: z.object({
-        kcal: z.number().optional(),
-        proteinG: z.number().optional(),
-        carbsG: z.number().optional(),
-        fatG: z.number().optional(),
-    }).optional(),
+    imageUri: z.string().optional(),
+    image_uri: z.string().optional(), // accept either key
     createdAt: z.number(),
     updatedAt: z.number(),
     schemaVersion: z.literal(1),
+    // nutrition: z.object({
+    //     kcal: z.number().optional(),
+    //     proteinG: z.number().optional(),
+    //     carbsG: z.number().optional(),
+    //     fatG: z.number().optional(),
+    // }).optional(),
 });
 
 export type RecipeT = z.infer<typeof Recipe>;

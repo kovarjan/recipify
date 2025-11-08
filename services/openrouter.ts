@@ -1,11 +1,6 @@
-// services/openrouter.ts
-const OR_API = "https://openrouter.ai/api/v1/chat/completions";
-
-// Dev only — don't ship real keys in production clients.
+const OR_API = process.env.EXPO_PUBLIC_OPENROUTER_API_URL || "https://openrouter.ai/api/v1/chat/completions";
 const OR_KEY = process.env.EXPO_PUBLIC_OPENROUTER_API_KEY!;
-const MODEL =
-  process.env.EXPO_PUBLIC_OPENROUTER_MODEL ||
-  "meta-llama/llama-3.3-8b-instruct:free";
+const MODEL = process.env.EXPO_PUBLIC_OPENROUTER_MODEL;
 
 export async function openRouterChat(prompt: string): Promise<string> {
     if (!OR_KEY) throw new Error("Missing OPENROUTER API key");
