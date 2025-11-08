@@ -48,14 +48,30 @@ export default function RootLayout() {
                 <Label>Home</Label>
                 <Icon sf="house.fill" drawable="custom_android_drawable" />
             </NativeTabs.Trigger>
+            
+            <NativeTabs.Trigger name="recepies">
+                <Label>Recipes</Label>
+                <Icon sf="book.fill" drawable="custom_android_drawable" />
+            </NativeTabs.Trigger>
+
             <NativeTabs.Trigger name="about">
                 <Label>About</Label>
                 <Icon sf="info.circle.fill" drawable="custom_android_drawable" />
             </NativeTabs.Trigger>
             {/* <NativeTabs.Trigger name="settings" role="search">
-                <Icon sf="gear" drawable="custom_settings_drawable" />
-                <Label>Settings</Label>
+            <Icon sf="gear" drawable="custom_settings_drawable" />
+            <Label>Settings</Label>
             </NativeTabs.Trigger> */}
+
+            <NativeTabs.Trigger name="capture">
+                <Icon sf="plus.circle.fill" drawable="custom_add_drawable" />
+                <Label>Import</Label>
+            </NativeTabs.Trigger>
+
+            <NativeTabs.Trigger name="search" role="search">
+                <Label>Search</Label>
+                <Icon sf="magnifyingglass" drawable="custom_android_drawable" />
+            </NativeTabs.Trigger>
         </NativeTabs>
     );
 }
