@@ -32,6 +32,7 @@ export const Recipe = z.object({
     createdAt: z.number(),
     updatedAt: z.number(),
     schemaVersion: z.literal(1),
+    total_time_minutes: z.number().optional(),
     // nutrition: z.object({
     //     kcal: z.number().optional(),
     //     proteinG: z.number().optional(),

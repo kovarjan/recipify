@@ -1,21 +1,88 @@
 // services/llm.ts
+import { getLlmSettings } from "@/services/settings";
 import { Alert } from "react-native";
 import { Recipe } from "../lib/schema";
-import { openRouterChat } from "./openrouter";
 
-// ---- helpers: sanitize + qty parsing ----
+/* ---------------- LLM call (provider-aware) ---------------- */
+
+async function callLlmRaw(prompt: string): Promise<string> {
+    const s = await getLlmSettings();
+
+    const provider = s.provider; // "openrouter" | "openai"
+    const apiKey = s.apiKey || "";
+    const model =
+    s.model ||
+    (provider === "openai" ? "gpt-4o-mini" : "meta-llama/llama-3.3-8b-instruct:free");
+    const url =
+    s.baseUrl ||
+    (provider === "openai"
+        ? "https://api.openai.com/v1/chat/completions"
+        : "https://openrouter.ai/api/v1/chat/completions");
+
+    if (!apiKey) {
+        throw new Error(
+            "Missing API key. Open Settings and set your provider and API key."
+        );
+    }
+
+    const body = {
+        model,
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0,
+        max_tokens: 1200,
+    };
+
+    const headers: Record<string, string> =
+    provider === "openai"
+        ? {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+        }
+        : {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+            // Optional niceties for OpenRouter rankings (safe to keep):
+            "HTTP-Referer": "http://localhost",
+            "X-Title": "Recipify",
+        };
+
+    const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
+    const text = await res.text();
+
+    // Try to parse once; if it fails, surface raw text in error.
+    let data: any = null;
+    try {
+        data = JSON.parse(text);
+    } catch {
+    /* keep text */
+    }
+
+    if (!res.ok) {
+        const msg = data?.error?.message || data?.message || text || res.statusText;
+        throw new Error(msg);
+    }
+
+    // Both OpenAI & OpenRouter respond with choices[0].message.content
+    const content: string = data?.choices?.[0]?.message?.content ?? "";
+    return content;
+}
+
+/* ---------------- helpers: sanitize + qty parsing ---------------- */
+
 const UNICODE_FRACTIONS: Record<string, number> = {
     "¼": 0.25, "½": 0.5, "¾": 0.75,
-    "⅐": 1/7, "⅑": 1/9, "⅒": 0.1,
-    "⅓": 1/3, "⅔": 2/3, "⅕": 0.2, "⅖": 0.4, "⅗": 0.6, "⅘": 0.8,
-    "⅙": 1/6, "⅚": 5/6, "⅛": 0.125, "⅜": 0.375, "⅝": 0.625, "⅞": 0.875,
+    "⅐": 1 / 7, "⅑": 1 / 9, "⅒": 0.1,
+    "⅓": 1 / 3, "⅔": 2 / 3, "⅕": 0.2, "⅖": 0.4, "⅗": 0.6, "⅘": 0.8,
+    "⅙": 1 / 6, "⅚": 5 / 6, "⅛": 0.125, "⅜": 0.375, "⅝": 0.625, "⅞": 0.875,
 };
 
 function unicodeToDecimal(str: string): string {
-    return str.replace(/[¼½¾⅐⅑⅒⅓⅔⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞]/g, ch => String(UNICODE_FRACTIONS[ch]));
+    return str.replace(/[¼½¾⅐⅑⅒⅓⅔⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞]/g, (ch) =>
+        String(UNICODE_FRACTIONS[ch])
+    );
 }
 
-// Parses number - or returns NaN
+// Parses number - or returns undefined
 function parseQty(input: unknown): number | undefined {
     if (typeof input === "number") return input;
     if (typeof input !== "string") return undefined;
@@ -42,7 +109,7 @@ function parseQty(input: unknown): number | undefined {
 
 function sanitizeRecipeJSON(draft: any) {
     const deep = (val: any): any => {
-        if (Array.isArray(val)) return val.map(deep).filter(v => v !== undefined);
+        if (Array.isArray(val)) return val.map(deep).filter((v) => v !== undefined);
         if (val && typeof val === "object") {
             const out: any = {};
             for (const [k, v] of Object.entries(val)) {
@@ -55,7 +122,6 @@ function sanitizeRecipeJSON(draft: any) {
         }
         if (typeof val === "string") {
             const t = val.trim();
-
             return t.length ? t : undefined; // drop empty strings
         }
         return val;
@@ -65,37 +131,41 @@ function sanitizeRecipeJSON(draft: any) {
 
     // Ingredient-specific normalization
     if (out?.ingredients && Array.isArray(out.ingredients)) {
-        out.ingredients = out.ingredients.map((ing: any) => {
-            if (!ing || typeof ing !== "object") return ing;
-            const normalized: any = { ...ing };
+        out.ingredients = out.ingredients
+            .map((ing: any) => {
+                if (!ing || typeof ing !== "object") return ing;
+                const normalized: any = { ...ing };
 
-            // qty: convert strings/fractions -> number - remove if invalid
-            if (normalized.qty !== undefined) {
-                const q = parseQty(normalized.qty);
-                if (q === undefined || Number.isNaN(q)) delete normalized.qty;
-                else normalized.qty = q;
-            }
+                // qty: convert strings/fractions -> number - remove if invalid
+                if (normalized.qty !== undefined) {
+                    const q = parseQty(normalized.qty);
+                    if (q === undefined || Number.isNaN(q)) delete normalized.qty;
+                    else normalized.qty = q;
+                }
 
-            if (!normalized.item) return undefined;
-
-            return normalized;
-        }).filter(Boolean);
+                if (!normalized.item) return undefined;
+                return normalized;
+            })
+            .filter(Boolean);
     }
 
     // Steps ordered
     if (out?.steps && Array.isArray(out.steps)) {
-        out.steps = out.steps.map((s: any, i: number) => {
-            if (!s || typeof s !== "object") return undefined;
-            const ns: any = { ...s };
-            if (typeof ns.order !== "number") ns.order = i + 1;
-            return ns.text ? ns : undefined;
-        }).filter(Boolean);
+        out.steps = out.steps
+            .map((s: any, i: number) => {
+                if (!s || typeof s !== "object") return undefined;
+                const ns: any = { ...s };
+                if (typeof ns.order !== "number") ns.order = i + 1;
+                return ns.text ? ns : undefined;
+            })
+            .filter(Boolean);
     }
 
     return out;
 }
 
-// ---- main function ----
+/* ---------------- main function ---------------- */
+
 export async function parseRecipe(ocrText: string) {
     const systemRules = `
 You extract structured recipe data as JSON ONLY (no prose).
@@ -123,12 +193,16 @@ Rules:
 
     const prompt = `${systemRules}\n\nOCR_TEXT:\n${ocrText}\n\nRespond with JSON only.`;
 
-    let content;
+    let content: string;
     try {
-        content = await openRouterChat(prompt);
+        content = await callLlmRaw(prompt);
     } catch (e) {
-        console.error("Error calling OpenRouter:", e);
-        Alert.alert("Error", "Failed to process recipe. Please try again. " + String(e));
+        console.error("Error calling LLM:", e);
+        Alert.alert(
+            "Error",
+            "Failed to process recipe. Please check Settings and try again.\n" +
+        String(e)
+        );
         return null;
     }
 
@@ -141,7 +215,9 @@ Rules:
 
     const match = cleaned1.match(/\{[\s\S]*\}/);
     if (!match) {
-        throw new Error(`Model did not return JSON. Got: ${cleaned1.slice(0, 200)}…`);
+        throw new Error(
+            `Model did not return JSON. Got: ${cleaned1.slice(0, 200)}…`
+        );
     }
 
     let draft: unknown;
@@ -152,14 +228,9 @@ Rules:
     }
 
     const cleaned = sanitizeRecipeJSON(draft);
-
     const validated = Recipe.partial().parse(cleaned);
     if (!validated.ingredients) validated.ingredients = [];
     if (!validated.steps) validated.steps = [];
 
-    // Wait 5 seconds before returning (simulate async processing)
-    // const validated = {"ingredients": [{"item": "malted milk", "qty": 200, "unit": "g"}, {"item": "biscuits", "qty": 100, "unit": "g"}, {"item": "butter", "qty": 100, "unit": "g"}, {"item": "caster sugar", "qty": 5, "unit": "tbsp"}, {"item": "cream cheese", "qty": 600, "unit": "g"}, {"item": "heavy cream", "qty": 300, "unit": "ml"}, {"item": "white chocolate", "qty": 300, "unit": "g"}, {"item": "milk chocolate", "qty": 200, "unit": "g"}, {"item": "malt powder", "qty": 2, "unit": "tbsp"}, {"item": "white Maltesers", "qty": 55, "unit": "g"}], "servings": 10, "steps": [{"order": 1, "text": "Combine biscuits, melted butter, 2 tablespoons sugar. Press to the bottom of a lightly greased 9 inch pan and chill."}, {"order": 2, "text": "Divide cream cheese and cream between two bowls, evenly. Add white chocolate to one and milk chocolate, malt and remaining 3 tablespoons sugar to another. Mix well until smooth."}, {"order": 4, "text": "Scoop the milk chocolate mixture evenly into the pan. Pour the white chocolate mixture over the surface."}, {"order": 5, "text": "Garnish with Maltesers and chill overnight."}], "tags": ["dessert"], "title": "Double-Chocomalt Cheesecake"};
-    // await new Promise(resolve => setTimeout(resolve, 5000));
-    
     return validated;
 }

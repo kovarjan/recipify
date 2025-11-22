@@ -1,14 +1,11 @@
 import Button from "@/components/Button";
 import { getRecipe } from "@/lib/db";
-import {
-    pickAndSaveRecipeImage,
-    removeRecipeImage,
-    setDefaultRecipeImage,
-} from "@/services/images";
+import { clampScale, fmtDate, formatQtyUnit, round2 } from '@/utils/common';
 import { LiquidGlassView } from '@callstack/liquid-glass';
 import Entypo from '@expo/vector-icons/Entypo';
 import FontAwesome6 from '@expo/vector-icons/FontAwesome6';
 import { Image } from "expo-image";
+import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
@@ -41,42 +38,32 @@ export default function RecipeDetail() {
             ...r.recipe,
             ingredients: r.ingredients,
             steps: r.steps,
+            imCooking: false,
         });
     };
+
+    useEffect(() => {
+        const tag = "recipe-detail-cooking";
+
+        if (rec?.imCooking) {
+            activateKeepAwakeAsync(tag).catch((err) => {
+                console.warn("Failed to activate keep awake", err);
+            });
+        } else {
+            deactivateKeepAwake(tag).catch(() => {
+                // ignore
+            });
+        }
+
+        return () => {
+            deactivateKeepAwake(tag).catch(() => {});
+        };
+    }, [rec?.imCooking]);
 
     useEffect(() => {
         reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [id]);
-
-    const onChangePhoto = async () => {
-        try {
-            console.log("Changing photo for recipe:", id, String(id));
-            const ret = await pickAndSaveRecipeImage(String(id));
-            console.log("Picked and saved recipe image:", ret);
-            await reload();
-        } catch (e: any) {
-            Alert.alert("Photo error", String(e?.message ?? e));
-        }
-    };
-
-    const onRemovePhoto = async () => {
-        try {
-            await removeRecipeImage(String(id));
-            await reload();
-        } catch (e: any) {
-            Alert.alert("Photo error", String(e?.message ?? e));
-        }
-    };
-
-    const onUseDefault = async () => {
-        try {
-            await setDefaultRecipeImage(String(id));
-            await reload();
-        } catch (e: any) {
-            Alert.alert("Image error", String(e?.message ?? e));
-        }
-    };
 
     const primaryTagIcons: Record<string, string> = {
         breakfast: "🥞",
@@ -306,6 +293,36 @@ export default function RecipeDetail() {
                                         </Chip>
                                     </View>
                                 </View>
+                                
+                                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                                    <Pressable
+                                        accessibilityRole="checkbox"
+                                        accessibilityState={{ checked: rec.imCooking ?? false }}
+                                        onPress={() => {
+                                            setRec((prev: any) => ({
+                                                ...prev,
+                                                imCooking: !prev?.imCooking,
+                                            }));
+                                        }}
+                                        style={{
+                                            width: 22,
+                                            height: 22,
+                                            borderRadius: 6,
+                                            borderWidth: 2,
+                                            borderColor: "#111",
+                                            backgroundColor: rec.imCooking ? "#111" : "#fff",
+                                            alignItems: "center",
+                                            justifyContent: "center",
+                                        }}
+                                    >
+                                        {rec.imCooking ? (
+                                            <Entypo name="check" size={16} color="#fff" />
+                                        ) : null}
+                                    </Pressable>
+                                    <Text style={{ color: "#111", fontSize: 13 }}>
+                                    I'm cooking (do not turn off screen)
+                                    </Text>
+                                </View>
                             </View>
                             {!!rec.servings && (
                                 <Text style={styles.configHint}>
@@ -321,7 +338,7 @@ export default function RecipeDetail() {
                                 <View key={`${idx}-${item.item}`} style={styles.ingRow}>
                                     <View style={styles.bullet} />
                                     <Text style={styles.ingText}>
-                                        {formatQtyUnit(item.qty, item.unit)} {item.item}
+                                        {formatQtyUnit(item.qty, item.unit, unitPref)} {item.item}
                                         {showNotes && item.notes ? (
                                             <Text style={styles.ingNotes}> — {item.notes}</Text>
                                         ) : null}
@@ -434,38 +451,6 @@ function Chip({
         </Pressable>
     );
 }
-
-/* ---------- formatting helpers ---------- */
-
-function round2(n: number) {
-    return Math.round(n * 100) / 100;
-}
-
-function formatQtyUnit(q?: number, u?: string) {
-    const qty = typeof q === "number" ? q : undefined;
-    const unit = (u ?? "").trim();
-    if (qty == null && !unit) return "";
-    if (qty == null) return unit;
-    if (!unit) return String(qty);
-    return `${qty} ${unit}`;
-}
-
-function clampScale(n: number) {
-    const v = Math.max(0.25, Math.min(4, n));
-    return Math.round(v * 100) / 100;
-}
-
-function fmtDate(ts?: number) {
-    if (!ts) return "—";
-    try {
-        const d = new Date(ts);
-        return d.toLocaleDateString();
-    } catch {
-        return "—";
-    }
-}
-
-/* ---------- styles ---------- */
 
 const styles = StyleSheet.create({
     container: {

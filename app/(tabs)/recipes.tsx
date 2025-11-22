@@ -5,7 +5,7 @@ import { LiquidGlassView } from '@callstack/liquid-glass';
 import { useNavigation } from '@react-navigation/native';
 import { Link } from "expo-router";
 import React, { useEffect, useState } from "react";
-import { FlatList, PlatformColor, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { FlatList, ImageBackground, PlatformColor, Pressable, StyleSheet, Text, View } from 'react-native';
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 export default function RecipesScreen() {
@@ -41,43 +41,53 @@ export default function RecipesScreen() {
     return (
         <GestureHandlerRootView style={styles.container}>
             <View style={styles.container}>
-                <ScrollView>
-
-                    <View style={styles.tagContainer}>
-                        {['All', 'Breakfast', 'Lunch', 'Dinner', 'Dessert', 'Snack', 'Baking'].map((category) => (
-                            <Pressable
-                                key={category}
-                                onPress={() => {
-                                    setSelectedCategory(category);
-                                    if (category === 'All') {
-                                        listRecipes().then(setItems);
-                                    } else {
-                                        listRecipes().then(data => handleFilter(data, category));
-                                    }
-                                }}
-                            >
-                                <LiquidGlassView style={styles.tagBtn} tintColor={selectedCategory === category ? 'rgba(0, 122, 255, 0.4)' : ''} interactive={true}>
-                                    <Text style={{color: PlatformColor('labelColor')}}>{category}</Text>
-                                </LiquidGlassView>
-                            </Pressable>
-                        ))}
-                    </View>
+                <ImageBackground
+                    source={require("@/assets/images/background.png")}
+                    style={styles.background}
+                    resizeMode="cover"
+                >
 
                     <FlatList
                         data={items}
                         keyExtractor={i => i.id}
                         style={styles.list}
-                        renderItem={({item}) =>
+                        contentContainerStyle={styles.list}
+                        ListHeaderComponent={
+                            <View style={styles.tagContainer}>
+                                {['All', 'Breakfast', 'Lunch', 'Dinner', 'Dessert', 'Snack', 'Baking'].map((category) => (
+                                    <Pressable
+                                        key={category}
+                                        onPress={() => {
+                                            setSelectedCategory(category);
+                                            if (category === 'All') {
+                                                listRecipes().then(setItems);
+                                            } else {
+                                                listRecipes().then(data => handleFilter(data, category));
+                                            }
+                                        }}
+                                    >
+                                        <LiquidGlassView
+                                            style={styles.tagBtn}
+                                            tintColor={selectedCategory === category ? 'rgba(0, 122, 255, 0.4)' : ''}
+                                            interactive={true}
+                                        >
+                                            <Text style={{ color: PlatformColor('labelColor') }}>
+                                                {category}
+                                            </Text>
+                                        </LiquidGlassView>
+                                    </Pressable>
+                                ))}
+                            </View>
+                        }
+                        renderItem={({ item }) => (
                             <Link href={`/recipe/${encodeURIComponent(String(item.id))}`} asChild>
                                 <Pressable>
                                     <RecipeCard recipe={item} />
                                 </Pressable>
                             </Link>
-                        }
-                        contentContainerStyle={{ paddingBottom: 100, paddingTop: 60 }}
+                        )}
                     />
-
-                </ScrollView>
+                </ImageBackground>
             </View>
         </GestureHandlerRootView>
     );
@@ -96,15 +106,21 @@ const styles = StyleSheet.create({
         borderStyle: 'solid',
         borderWidth: 1,
     },
+    background: {
+        flex: 1,
+        width: "100%",
+    },
     text: {
         color: '#000',
     },
     list: {
         width: '100%',
+        paddingBottom: 100,
+        paddingTop: 40,
     },
     tagContainer: {
-        position: 'relative',
-        top: 60,
+        // position: 'relative',
+        // top: 30,
         flexDirection: 'row',
         gap: 8,
         paddingHorizontal: 16,

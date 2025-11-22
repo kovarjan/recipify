@@ -1,5 +1,6 @@
 import Button from "@/components/Button";
 import { getRecipe } from "@/lib/db";
+import { RecipeT } from "@/lib/schema";
 import {
     pickAndSaveRecipeImage,
     removeRecipeImage,
@@ -38,7 +39,7 @@ export default function RecipeEdit() {
     // form state
     const [title, setTitle] = useState("");
     const [description, setDescription] = useState<string>("");
-    const [servings, setServings] = useState<string>(""); // keep as string for TextInput
+    const [servings, setServings] = useState<string>("");
     const [totalTime, setTotalTime] = useState<string>("");
     const [tags, setTags] = useState<string>("");
 
@@ -48,7 +49,7 @@ export default function RecipeEdit() {
     const reload = async () => {
         setLoading(true);
         const r = await getRecipe(String(id));
-        const rec = r.recipe;
+        const rec: RecipeT = r.recipe;
         setTitle(rec.title ?? "");
         setDescription(rec.description ?? "");
         setServings(rec.servings != null ? String(rec.servings) : "");
@@ -429,7 +430,6 @@ export default function RecipeEdit() {
     );
 }
 
-/* ---------- small subcomponents ---------- */
 function LabeledInput({
     label,
     helperText,

@@ -4,17 +4,18 @@
     "slug": "recipify",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/icon-2.png",
     "scheme": "recipify",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.kovarjan.recipify",
+      "icon": "./assets/recipify.icon",
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "We use your photo library to import recipe photos.",
         "NSCameraUsageDescription": "We use the camera to capture recipe photos."
-      }
+      },
     },
     "android": {
       "adaptiveIcon": {
@@ -36,12 +37,12 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 200,
+          "image": "./assets/images/splash_screen.png",
+          "imageWidth": 400,
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff",
+          "backgroundColor": "#3F9CA8",
           "dark": {
-            "backgroundColor": "#000000"
+            "backgroundColor": "#3F9CA8"
           }
         }
       ],
@@ -58,7 +59,8 @@
             "deploymentTarget": "15.1"
           }
         }
-      ]
+      ],
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true,
