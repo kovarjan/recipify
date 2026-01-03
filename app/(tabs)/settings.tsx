@@ -99,8 +99,8 @@ export default function SettingsScreen() {
             ? {
                 model: model.trim(),
                 messages: [{ role: "user", content: "ping" }],
-                max_tokens: 5,
-                temperature: 0,
+                // temperature: 0.2,
+                // max_tokens: 5, // Do not add max_tokens for OpenAI does not support it
             }
             : {
                 model: model.trim(),

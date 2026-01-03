@@ -15,6 +15,11 @@ This is an [Expo](https://expo.dev) project created with [`create-expo-app`](htt
    ```bash
    npx expo start
    ```
+   or to run on iOS simulator directly [rebuild]:
+   ```bash
+   npx expo prebuild -p ios --clean
+   npx expo run:ios
+   ```
 
 In the output, you'll find options to open the app in a
 
@@ -48,3 +53,4 @@ Join our community of developers creating universal apps.
 
 - [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
 - [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+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

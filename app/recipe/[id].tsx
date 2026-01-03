@@ -4,9 +4,11 @@ import { clampScale, fmtDate, formatQtyUnit, round2 } from '@/utils/common';
 import { LiquidGlassView } from '@callstack/liquid-glass';
 import Entypo from '@expo/vector-icons/Entypo';
 import FontAwesome6 from '@expo/vector-icons/FontAwesome6';
+import * as Clipboard from "expo-clipboard";
 import { Image } from "expo-image";
 import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import { LinearGradient } from "expo-linear-gradient";
+import * as Print from 'expo-print';
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import {
@@ -16,6 +18,7 @@ import {
     ScrollView,
     StyleSheet,
     Text,
+    TextInput,
     View
 } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -31,6 +34,7 @@ export default function RecipeDetail() {
     const [scale, setScale] = useState<number>(1); // servings multiplier
     const [unitPref, setUnitPref] = useState<"metric" | "us">("metric"); // simple label
     const [showNotes, setShowNotes] = useState<boolean>(true);
+    const [customServings, setCustomServings] = useState<string>("");
 
     const reload = async () => {
         const r = await getRecipe(String(id));
@@ -64,6 +68,46 @@ export default function RecipeDetail() {
         reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [id]);
+
+    // Sync customServings text when recipe loads or scale changes from chips
+    useEffect(() => {
+        const timeoutRef = { current: null as null | ReturnType<typeof setTimeout> };
+
+        if (rec?.servings) {
+            if (customServings === "") {
+                const calculatedValue = rec.servings * scale;
+                const roundedValue = Math.round(calculatedValue * 100) / 100;
+                setCustomServings(String(roundedValue));
+            } else {
+                if (timeoutRef.current) {
+                    clearTimeout(timeoutRef.current);
+                }
+                timeoutRef.current = setTimeout(() => {
+                    const calculatedValue = rec.servings * scale;
+                    const roundedValue = Math.round(calculatedValue * 100) / 100;
+                    if (Math.abs(parseFloat(customServings) - roundedValue) > 0.01) {
+                        setCustomServings(String(roundedValue));
+                    }
+                }, 800); // 800ms cooldown
+            }
+        }
+
+        return () => {
+            if (timeoutRef.current) {
+                clearTimeout(timeoutRef.current);
+            }
+        };
+    }, [scale, rec?.servings, customServings]);
+        
+    const handleCustomServingsChange = (val: string) => {
+        setCustomServings(val);
+        
+        const num = parseFloat(val);
+        if (!isNaN(num) && num > 0 && rec?.servings) {
+            const newScale = num / rec.servings;
+            setScale(clampScale(newScale));
+        }
+    };
 
     const primaryTagIcons: Record<string, string> = {
         breakfast: "🥞",
@@ -150,6 +194,96 @@ export default function RecipeDetail() {
         router.push(`/recipe/edit/${encodeURIComponent(String(id))}`);
     };
 
+    const handleCopy = () => {
+        if (!rec) return;
+        const recipeText = [
+            `Recipe: ${rec.title}`,
+            rec.description ? `\n${rec.description}` : "",
+            "\nIngredients:",
+            ingredientsScaled.map(item =>
+                `- ${formatQtyUnit(item.qty, item.unit, unitPref)} ${item.item}${showNotes && item.notes ? ` — ${item.notes}` : ""}`
+            ).join("\n"),
+            "\nSteps:",
+            Array.isArray(rec.steps)
+                ? rec.steps
+                    .slice()
+                    .sort((a: Step, b: Step) => a.order - b.order)
+                    .map((s: Step, idx: number) => {
+                        const t = s.timeMinutes ?? s.time_minutes;
+                        return `${idx + 1}. ${s.text}${typeof t === "number" && t > 0 ? ` (${t} min)` : ""}`;
+                    }).join("\n")
+                : "No steps provided.",
+        ].filter(Boolean).join("\n\n");
+
+        Clipboard.setStringAsync(recipeText);
+        Alert.alert("Copied", "Recipe copied to clipboard.");
+    };
+
+    const handlePrint = async () => {
+        if (!rec) return;
+
+        const ingredientsHtml = ingredientsScaled.map(item => `
+        <li style="margin-bottom: 8px;">
+            <strong>${formatQtyUnit(item.qty, item.unit, unitPref)}</strong> ${item.item}
+            ${showNotes && item.notes ? `<i style="color: #666;"> — ${item.notes}</i>` : ""}
+        </li>
+    `).join("");
+
+        const stepsHtml = rec.steps
+            .slice()
+            .sort((a: Step, b: Step) => a.order - b.order)
+            .map((s: Step, index: number) => `
+            <div style="margin-bottom: 15px;">
+                <div style="font-weight: bold;">Step ${s.order ?? index + 1}</div>
+                <div>${s.text}</div>
+            </div>
+        `).join("");
+
+        const htmlContent = `
+        <html>
+            <head>
+                <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no" />
+                <style>
+                    body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #111; }
+                    h1 { margin-bottom: 5px; }
+                    .meta { color: #666; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 10px; }
+                    h2 { border-bottom: 2px solid #111; padding-bottom: 5px; margin-top: 30px; }
+                    ul { padding-left: 20px; }
+                </style>
+            </head>
+            <body>
+                <h1>${rec.title}</h1>
+                <div class="meta">
+                    ${rec.description ? `<p>${rec.description}</p>` : ""}
+                    <p>
+                        <strong>Servings:</strong> ${servingsText} | 
+                        <strong>Total Time:</strong> ${totalTimeText ?? "N/A"}
+                    </p>
+                </div>
+                
+                <h2>Ingredients</h2>
+                <ul>${ingredientsHtml}</ul>
+                
+                <h2>Instructions</h2>
+                <div>${stepsHtml}</div>
+            </body>
+            <footer>
+                <p style="font-size: 12px; color: #999; text-align: center; margin-top: 40px;">
+                    Printed from recipify app - ${new Date().toLocaleDateString()}
+                </p>
+            </footer>
+        </html>
+    `;
+
+        try {
+            await Print.printAsync({
+                html: htmlContent,
+            });
+        } catch (error) {
+            Alert.alert("Print Error", "Could not open print dialog.");
+        }
+    };
+            
     const handleDelete = () => {
         Alert.alert(
             "Delete Recipe",
@@ -261,6 +395,18 @@ export default function RecipeDetail() {
                                 <View style={styles.configGroup}>
                                     <Text style={styles.configLabel}>Servings</Text>
                                     <View style={styles.configControls}>
+                                        {/* The numeric input for specific portions */}
+                                        {rec?.servings && (
+                                            <TextInput
+                                                keyboardType="numeric"
+                                                value={customServings}
+                                                onChangeText={handleCustomServingsChange}
+                                                style={styles.servingsInput}
+                                                selectTextOnFocus={true}
+                                                placeholder="Qty"
+                                            />
+                                        )}
+
                                         <Chip onPress={() => setScale((s) => clampScale(s / 2))} selected={scale === 0.5}>½×</Chip>
                                         <Chip onPress={() => setScale(1)} selected={scale === 1}>1×</Chip>
                                         <Chip onPress={() => setScale((s) => clampScale(s * 2))} selected={scale === 2}>2×</Chip>
@@ -385,6 +531,20 @@ export default function RecipeDetail() {
                         </View>
 
                         <View style={styles.buttonsContainer}>
+                            <Button 
+                                label="Copy" 
+                                variant="outline" 
+                                onPress={handleCopy} 
+                                fullWidth={true}
+                                iconLeft={<Entypo name="copy" size={20} color="#000" />}
+                            />
+                            <Button 
+                                label="Print" 
+                                variant="outline" 
+                                onPress={handlePrint} 
+                                fullWidth={true}
+                                iconLeft={<Entypo name="print" size={20} color="#000" />}
+                            />
                             <Button 
                                 label="Edit" 
                                 variant="primary" 
@@ -729,6 +889,20 @@ const styles = StyleSheet.create({
         flexDirection: "row",
         justifyContent: "center",
         gap: 12,
+        flexWrap: "wrap",
         marginTop: 24,
+    },
+    servingsInput: {
+        backgroundColor: "#f2f2f2",
+        borderRadius: 10,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: "#e0e0e0",
+        paddingHorizontal: 12,
+        height: 40, // Match chip height
+        fontSize: 14,
+        fontWeight: "700",
+        color: "#111",
+        minWidth: 50,
+        textAlign: "center",
     },
 });

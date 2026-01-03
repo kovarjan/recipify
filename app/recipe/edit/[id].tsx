@@ -324,7 +324,8 @@ export default function RecipeEdit() {
                             <Text style={styles.sectionTitle}>Ingredients</Text>
 
                             {ingredients.map((ing, idx) => (
-                                <View key={`${idx}-${ing.item}-${ing.unit}`} style={styles.rowCard}>
+                                // <View key={`${idx}-${ing.item}-${ing.unit}`} style={styles.rowCard}>
+                                <View key={`ing-${idx}`} style={styles.rowCard}>
                                     <View style={{ flexDirection: "row", gap: 8 }}>
                                         <LabeledInput
                                             label="Qty"

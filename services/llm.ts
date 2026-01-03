@@ -25,12 +25,20 @@ async function callLlmRaw(prompt: string): Promise<string> {
         );
     }
 
-    const body = {
-        model,
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0,
-        max_tokens: 1200,
-    };
+    const body =
+        provider === "openai"
+            ? {
+                model,
+                messages: [{ role: "user", content: prompt }],
+                // temperature: 0.2,
+                // Do not add max_tokens for OpenAI
+            }
+            : {
+                model,
+                messages: [{ role: "user", content: prompt }],
+                temperature: 0,
+                max_tokens: 1200,
+            };
 
     const headers: Record<string, string> =
     provider === "openai"
@@ -189,6 +197,7 @@ Rules:
 - First tag is the main category of the recipe. (one of: breakfast, lunch, dinner, dessert, snack, beverage, salad, soup, baking)
 - Fix grammar/typos in recipe text.
 - Never invent data: if unknown, omit the key.
+- Try to preserve recipe language do not translate
 `.trim();
 
     const prompt = `${systemRules}\n\nOCR_TEXT:\n${ocrText}\n\nRespond with JSON only.`;
